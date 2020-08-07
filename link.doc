@@ -1,0 +1,8 @@
+链接：
+
+软链接：文件的硬链接以另外的文件形式出现。
+命令：ln Desktop/121 Downloads/321(将desktop下面的121硬链接到download下面的321)
+如果改变其中一个文件的内容，另外一个也会改变
+
+硬链接：首先把路径找对：进入他的目录中，使用命令：pwd查看路径
+命令：ln -s /home/u/Desktop/123/ Downloads/

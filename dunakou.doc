@@ -1,0 +1,4 @@
+# netstat  -anp  |grep   端口号
+# kill -9 pid
+# kill -15 pid
+

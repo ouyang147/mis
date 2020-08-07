@@ -1,0 +1,109 @@
+\n 换行
+\', \\ 转移
+\t 制表
+r 不转移，加最前面
+'''...''' 转移
+// 取整数
+% 取余数
+'中文'.encode('utf-8') 显示unt
+b'\xe4\xb8\xad\xe6\x96\x87'.decode('utf-8') 显示中文
+len('ABc') 显示长度
+
+    %运算符就是用来格式化字符串的。在字符串内部，%s表示用字符串替换，%d表示用整数替换，有几个%?占位符，后面就跟几个变量或者值，顺序要对应好。如果只有一个%?，括号可以省略
+占位符	替换内容
+%d	整数
+%f	浮点数
+%s	字符串
+%x	十六进制整数
+print('%3d-%02d' % (3,1))
+%3d 3表示空的格
+
+append 插入最后
+insert 插入位置（1，'123'）
+pop 删除末尾显示
+t = (1,) 元组
+
+
+sum = 0
+for x in range(101):
+    sum = sum + x
+print(sum)   累加和
+
+sum = 0
+n = 99
+while n > 0:
+    sum = sum + n
+    n = n - 2
+print(sum)   奇数和
+
+通过in判断key是否存在
+
+set内重复的自动过滤
+>>> s = set([1,1,2,3,2,3])
+>>> s
+{1, 2, 3}
+
+
+max（1,23,43,45,12,3）还回最大的1个值
+
+def power(x, n=2):
+    s = 1
+    while n > 0:
+        n = n - 1
+        s = s * x
+    return s ---->函数的次方
+
+仅仅在参数前面加了一个*号，函数内部参数numbers接收到的是一个tuple，因此，函数代码完全不变。
+*nums表示把nums这个list的所有元素作为可变参数传进去
+
+def fact(n):
+    if n==1:
+        return 1
+    return n * fact(n - 1) ---->递归
+
+
+所有数，每5个取一个：
+l = list(range(100)) 
+l[::5]
+
+d = {'a': 1, 'b': 2, 'c': 3}
+for key in d:
+	print(key) --->迭代key值
+for values in d.values():
+	print(values) --->迭代values值
+for k, v in d.items():
+	print(k, v) --->迭代k，v值
+
+写列表生成式时，把要生成的元素x * x放到前面，后面跟for循环，就可以把list创建出来
+print（[x * x for x in range(1, 11) if x % 2 == 0]）--->列表生成式
+
+b = {'x': 'A', 'y': 'B', 'z': 'C'}
+for k, v in b.items():
+    print(k, '=', v)
+print([k + '=' + v for k, v in b.items()]) --->2个字符的+
+注意：如果list中既包含字符串，又包含整数，由于非字符串类型没有lower()方法，所以列表生成式会报错
+
+只要把一个列表生成式的[]改成()，就创建了一个generator（生成器）
+generator打印出来，可以通过next()函数获得generator的下一个返回值
+def fib(max):
+    n, a, b = 0, 0, 1
+    while n < max:
+        print(b)
+        a, b = b, a + b
+        n = n + 1
+    return 'done'--->斐波拉契数列用列表生成式写不出来，但是，用函数把它打印出来
+
+sorted([36, 5, -12, 9, -21])排序小---大
+sorted([36, 5, -12, 9, -21], key=abs)排序绝对值小---大
+sorted(['bob', 'about', 'Zoo', 'Credit'])排序大写前，a---z
+
+
+
+
+
+
+
+
+
+
+

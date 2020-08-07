@@ -1,0 +1,260 @@
+      安装nvidia
+# uname -r
+3.10.0-1062.el7.x86_64
+
+# yum list | grep kernel-devel
+
+# yum -y install kernel-devel-3.10.0-(搜索下载)
+
+# lspci | grep "NVIDIA"
+
+# yum -y install gcc gcc-c++ wget
+
+# rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
+
+# rpm -Uvh http://www.elrepo.org/elrepo-release-7.0-2.el7.elrepo.noarch.rpm
+
+# vim /lib/modprobe.d/dist-blacklist.conf
+blacklist nouveau               #添加此行
+options nouveau modeset=0       #添加此行
+# blacklist nvidiafb            #将nvidiafb的这一行注释掉
+
+# 备份
+# mv /boot/initramfs-$(uname -r).img /boot/initramfs-$(uname -r).img.bak
+
+# 重建
+# dracut /boot/initramfs-$(uname -r).img $(uname -r)
+
+# 修改系统运行级别为纯文本模式
+# systemctl set-default multi-user.target
+
+# 重启系统
+# reboot
+
+# 查看nouveau显卡驱动是否已经被禁用，若此命令执行完之后没有输出相关信息，则说明已经被禁用
+# lsmod | grep nouveau
+
+# ps aux | grep X
+
+# systemctl stop gdm(屏幕点开)
+# rm -f /tmp/.X*
+# 文件授权
+# chmod +x NVIDIA-Linux-x86_64-384.59.run
+
+# ./NVIDIA-Linux-x86_64-440.33.01.run  -no-x-check -no-nouveau-check -no-opengl-files
+
+# ./NVIDIA-Linux-x86_64-440.33.01.run --kernel-source-path=/usr/src/kernels/3.10
+
+# systemctl start gdm(屏幕点开)
+# nvidia-smi 
+
+     安装cuda
+# chmod +x cuda_10.2.89_440.33.01_linux.run
+# ./cuda_10.2.89_440.33.01_linux.run
+如果安装了nvidia，直接选择第三个，其他的全部不要
+# cd /usr/local/cuda-10.2 
+# vim /etc/profile
+最后一行加入：
+#设置cuda10.2环境变量
+export PATH=$PATH:/usr/local/cuda-10.2/bin
+export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+或者：
+# vim ~/.bashrc
+在最后加入以下两行：
+export PATH=/usr/local/cuda-10.2/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+保存然后执行：source ~/.bashrc
+
+# nvcc -V
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2019 NVIDIA Corporation
+Built on Wed_Oct_23_19:24:38_PDT_2019
+Cuda compilation tools, release 10.2, V10.2.89
+
+      
+      docker位置设置
+首先要停止docker，然后修改：
+# vim /etc/docker/daemon.json 
+ "graph":"/home/data2/var/lib/docker/"
+进入到
+# cd /home/data2
+# mkdir -pv var/lib/docker/
+重启docker
+
+
+      安装Anaconda3
+# wget https://repo.anaconda.com/archive/Anaconda3-5.3.1-Linux-x86_64.sh
+# yum install bzip2 -y
+# bash Anaconda3-5.3.1-Linux-x86_64.sh
+yes
+/usr/local/src/anaconda3
+yes
+yes
+
+# vim /root/.bashrc
+export PATH="/usr/local/src/anaconda3/bin:$PATH"
+# source /root/.bashrc
+
+      pkg-config安装
+# yum install gcc gcc-c++ kernel-devel gcc-gfortran git gtk2 gtk2-devel gtk2-devel-docs
+# mkdir /opt/pkg
+# cd /opt/pkg 
+# wget http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz
+# tar xvf pkg-config-0.29.2.tar.gz 
+# cd pkg-config-0.29.2
+# ./configure --prefix=/usr/local/pkg-config --with-internal-glib
+# make
+# make instal
+验证查看环境十分OK 
+# pkg-config --version
+
+
+编译安装cmake：
+# yum install -y gcc gcc-c++ make automake openssl-devel.x86_64
+# cd cmake-3.16.5/
+# ./bootstrap --prefix=/usr/local/cmake
+# make && make install
+# ln -s /usr/local/cmake/bin/cmake cmake
+# vim /etc/profile
+export PATH=$PATH:/usr/local/cmake/bin
+# source /etc/profile
+# cmake --version
+
+
+      ffmpeg安装
+# yum -y install epel-release
+# yum localinstall –nogpgcheck https://download1.rpmfusion.org/free/el/rpmfusion-free-release-7.noarch.rpm
+# yum localinstall –nogpgcheck https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-7.noarch.rpm
+# rpm -import http://li.nux.ro/download/nux/RPM-GPG-KEY-nux.ro
+# rpm -Uvh http://li.nux.ro/download/nux/dextop/el7/x86_64/nux-dextop-release-0-1.el7.nux.noarch.rpm
+
+最后安装ffmpeg
+# yum -y install ffmpeg ffmpeg-devel
+
+测试ffmpeg有没有安装成功
+# ffmpeg -version
+
+编译安装ffmpeg：
+https://www.jianshu.com/p/94a1759ceb34
+================================================================================================
+
+
+
+      安装opencv
+# yum -y install python-devel numpy libdc1394-devel libv4l-devel gstreamer-plugins-base-devel
+#或者直接点击链接下载：https://codeload.github.com/opencv/opencv/zip/3.4.4
+# unzip opencv
+# cd opencv
+# mkdir -pv opencv
+# cd opencv
+# cmake ..
+# make -j4
+# make install
+
+OpenCV编译参数:
+https://blog.csdn.net/weixin_34319999/article/details/91741641
+
+配置opencv
+# vim /etc/ld.so.conf.d/opencv.conf
+/usr/local/lib64(添加内容)
+# sudo ldconfig
+输入命令：
+# vim /etc/profile
+在末尾加入：
+export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig:$PKG_CONFIG_PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib64
+
+更新环境变量：
+# source /etc/profile
+# sudo ldconfig
+
+      安装yolo_makr
+# git clone https://github.com/AlexeyAB/Yolo_mark.git
+进入目录里面：
+# cmake .
+# make
+# chmod +x linux_mark.sh
+# ./linux_mark.sh
+
+      安装yolo
+官网：https://pjreddie.com/darknet/yolo/
+# git clone https://github.com/pjreddie/darknet
+# cd darknet
+# make
+# wget https://pjreddie.com/media/files/yolov3.weights
+# ./darknet detect cfg/yolov3.cfg yolov3.weights data/dog.jpg
+
+
+      谷歌浏览器：
+# wget https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
+# yum install -y lsb libXScrnSaver
+# yum -y install google-chrome-stable_current_x86_64.rpm
+
+      安装mysql-workbench
+# yum groupinstall "Development Tools" -y 
+# yum install gtk+-devel gtk2-devel -y
+# yum -y install pcre-devel libglade2-devel gtkmm24-devel libgnome-devel lua-devel libzip-devel mysql-devel libglade2-devel uuid-devel pexpect libzip 
+# wget -c https://dev.mysql.com/get/Downloads/MySQLGUITools/mysql-workbench-community-8.0.19-1.el7.x86_64.rpm
+# rpm -ivh mysql-workbench-community-8.0.19-1.el7.x86_64.rpm 
+
+
+磁盘挂载：
+1. 添加磁盘，查看磁盘状况
+# fdisk -l
+Disk /dev/sdb: 5368 MB, 5368709120 bytes
+
+255 heads, 63 sectors/track, 652 cylinders
+
+Units = cylinders of 16065 * 512 = 8225280 bytes
+
+   Device Boot      Start         End      Blocks   Id  System
+---------------------------表示分区-------------------------------
+2. 用fdisk 对/dev/sdb 进行分区
+# fdisk /dev/sdb
+依次输入 p w
+# fdisk -l
+3. 格式化 /dev/sdb1 分区
+# mkfs -t ext3 /dev/sdb
+4. 创建目录 并将 /dev/sdb1 挂在到该目录下
+# mkdir /u01
+# mount /dev/sdb /u01
+5. 验证挂载是否成功
+# df -k
+6. 设置开机自动挂载
+# vim /etc/fstab
+/dev/sdb               /u01                 ext3    defaults        0 0
+
+
+      关于网络：
+运行报错：
+# service network restart
+# cd /etc/sysconfig/network-scripts
+# rm -rf ifcfg-eth0
+# service network restart
+修改dns地址
+编辑/etc/resolv.conf
+修改文件内容 nameserver 114.114.114.114
+常用dns地址
+114.114.114.114
+114.114.115.115
+223.5.5.5 阿里
+223.6.6.6 阿里
+180.76.76.76 百度
+
+ping: www.baidu.com: 未知的名称或服务
+输入vim /etc/sysconfig/network-scripts/ifcfg-ens33，然后会看到下图
+将BOOTPROTO="dhcp" 改成 BOOTPROTO="static"
+将ONBOOT="on" 改成 ONBOOT="yes"
+DNS1="223.5.5.5"(加到最后一行)
+
+# ping 223.5.5.5
+service network restart
+
+
+
+
+
+
+
+
+

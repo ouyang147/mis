@@ -1,0 +1,15 @@
+1.远程的teamviewer
+2.远程的sudo apt-get -y install openssh-server
+sudo service ssh start
+3.sudo apt-get install putty
+4.putty回车打开，输入ip地址
+5.执行nvidia-smi：报错：“NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the lat”
+原因：主要产生的原因是ubuntu内核更新了
+uname -r
+sudo apt-get install dkms
+cd /usr/src
+sudo dkms install -m nvidia -v 430.34
+nvidia-smi
+
+scp 当前文件 用户名@IP地址:~
+

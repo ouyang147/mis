@@ -1,0 +1,574 @@
+k8s yaml的主要组成: 
+apiVersion: api版本
+kind: 资源类型(Pod, ReplicationController, service, deployment，controllers，Namespace，ReplicaSet复制集)抽象集合
+metadata: 属性，取名字
+spec: 详细，用户自定义期望状态                    
+status：实际状态，是有k8s集群自行维护
+
+
+
+CPU和内存的Requests和Limits有如下特点:
+    1.Requests和Limits都是可选的。在Pod创建和更新时，如果未设置Requests和Limits，则使用系统提供的默认值，该默认值取决于集群配置。
+    2.如果Requests没有配置，默认被设置等于Limits。
+    3.任何情况下Limits都应该设置为大于或等于Requests
+1.创建包含资源requests的pod：
+apiVersion: v1或apps/v1
+kind: Pod
+metadata:
+  name: requests-pod
+spec:
+  containers:
+  - image: busybox
+    name: busybox 
+    args:
+    - /bin/sh
+    - -c
+    - sleep 60000
+    resources:
+      requests:          #资源申请
+        cpu: 500m        #容器申请500毫核(一个CPU核心时间的1/2)
+        memory: 500Mi    #容器申请500M内存
+  nodeName: node01
+    在Kubernetes系统上，l个单位的CPU相当于虚拟机上的l颗虚拟CPU(vCPU）或物理机上的一个超线程（Hyperthread，或称为一个逻辑CPU），它支持分数计量方式，一个核心（1core）相当于1000个微核心（millicores），因此500m相当于是0.5个核心，即二分之一个核心。内存的计量方式与日常使用方式相同，默认单位是字节，也可以使用E,P、T、G、M和K作为单位后缀，或Ei、Pi、Ti、Gi、Mi和Ki形式的单位后缀。
+
+
+
+
+k8s之Controller Manager：
+      Controller Manager作为集群内部的管理控制中心，负责集群内的Node、Pod副本、服务端点（Endpoint）、命名空间（Namespace）、服务账号（ServiceAccount）、资源定额（ResourceQuota）的管理，当某个Node意外宕机时，Controller Manager会及时发现并执行自动化修复流程，确保集群始终处于预期的工作状态
+      每个Controller通过API Server提供的接口实时监控整个集群的每个资源对象的当前状态，当发生各种故障导致系统状态发生变化时，会尝试将系统状态修复到“期望状态”
+
+
+
+资源请求和限制
+spec:
+  selector:
+    matchLabels:
+      env: prod
+  replicas: 10 
+  template:
+若不指定资源请求量，节点node1可成功运行10个pod
+1.OutOfmemory（内存不足）
+# vim pod.yaml
+resources:
+      requests:          #资源申请
+        cpu: 500m        #容器申请500毫核(一个CPU核心时间的1/2)
+        memory: 800Mi    #容器申请800M内存
+  nodeName: node01
+# kubectl apply -f pod.yaml 
+# vim pod2.yaml
+ resources:
+      requests:
+        cpu: 500m 
+        memory: 800Mi
+  nodeName: node01
+# kubectl apply -f pod2.yaml
+# kubectl get po -o wide 
+报节点node01 内存资源不足，pod requests-pod-2调度失败
+2.OutOfcpu
+# vim pod.yaml
+resources:
+      requests:          #资源申请
+        cpu: 1           #容器申请一个CPU核心时间
+        memory: 80Mi    #容器申请80M内存
+  nodeName: node01
+# kubectl apply -f pod.yaml 
+# vim pod2.yaml
+resources:
+      requests:
+        cpu: 1 
+        memory: 80Mi
+  nodeName: node01
+# kubectl apply -f pod2.yaml
+# kubectl get po -o wide 
+报节点node01 cpu资源不足，pod requests-pod-2调度失败
+总结：
+    1.调度器在调度时并不关注各类资源在当前时刻的实际使用量（node01可以同时运行10个busybox pod）
+    2.调度器只关心节点上部署的所有pod的资源申请量之和（超出时就会报OutOfmemory或OutOfcpu）
+    3.尽管现有pods的资源实际使用量可能小于它的申请量，但如果使用基于实际资源消耗量的调度算法将打破系统为这些已部署成功的pods提供足够资源的保证
+
+限制：
+    resources:
+      requests:         #资源申请
+        cpu: 200m       #容器申请200毫核(一个CPU核心时间的1/5)
+        memory: 80Mi    #容器申请80M内存
+      limits:           #资源限制
+        cpu: 2          #容器最大允许使用2核CPU
+        memory: 2Gi     #容器最大允许使用2GB内存
+  nodeName: node01
+创建pod limited-pod，资源限制为cpu 2核，内存2G
+# kubctl describe nodes nodes1（查看node1节点使用情况）
+总结：
+    1.节点上所有pod的资源limits之和可以超过节点资源总量的100%
+    2.requests不同的是，limits并不会影响pod的调度结果
+服务质量：
+     Guaranteed（放心的）：每个容器都为CPU资源设置了具有相同值的requests和limits属性，以及每个容器都为内存资源设置了具有相同值的requests和limits属性的Pod资源会自动归属于此类别，这类Pod资源具有最高优先级。
+     Burstable（稳定的）：至少有一个容器设置了CPU或内存资源requests属性，但不满足Guaranteed类别要求的Pod资源将自动归属于此类别，它们具有中等优先级。
+     BestEffort（最好的）：未为任何一个容器设置requests或limits属性的Pod资源将自动归属于此类别，它们的优先级为最低级别。
+
+为单个容器设置资源requests和limits很有必要性：
+    1.提升QoS等级，防止在OOM时被首先kill
+    2.默认情况下Pod会以无限制的CPU和内存运行，很有可能因故吞掉所在工作节点上的所有可用计算资源
+    3.需要的是对集群内Requests和Limits的配置做一个全局的统一的限制
+
+
+
+
+
+删除Pod
+1.通过删除deployment删除podReplicaSet
+# kubectl delete deployments kubia 
+2.通过删除namespace删除pod
+# kubectl delete all --all -n test02-namespace 
+3.直接删除namespace
+# kubectl delete ns test01-namespace
+删除/etc/kubernetes/manifests下的yaml文件
+# kubectl get pod
+No resources found.
+    直接删除pod会重建一个新的不同名的pod； 
+    直接删除replicasets会重建同名replicasets，其下所有pod则会删除重建且名字不同；
+    直接删除deployments则其下的replicasets和pod将一起被删除
+
+
+
+首先的写好pod-volumelogs.yaml文件，再创建pod：
+# kubectl apply -f pod-volume-logs.yaml 
+pod/volume-pod created
+
+
+
+Pod状态和健康检查
+1.状态：
+       挂起（Pending）：API Server已经创建该Pod，但在Pod内还有一个或多个容器的镜像没有创建，包括正在下载的过程
+       运行中（Running）：Pod内所有容器均已创建，且至少有一个容器处于运行、启动、重启状态
+       成功（Succeeded）：Pod 中的所有容器都被成功执行后退出，并且不会再重启
+       失败（Failed）：Pod 中的所有容器都已终止了，但至少有一个容器退出为失败状态，也就是说，容器以非0状态退出或者被系统终止
+       未知（Unknown）：因为某些原因无法取得 Pod 的状态，通常是因为与 Pod 所在主机通信失败
+2.重启策略：
+       Pod的重启策略RestartPolicy可能的值为 Always、OnFailure 和 Never，默认为 Always
+       Always：当容器失效时，由kubelet自动重启
+       OnFailure：当容器终止运行且退出码不为0时，由kubelet自动重启
+       Never：不论容器运行状态如何都不会重启
+3.健康检查：
+LivenessProbe：存活性探测
+存活性探测的方法可配置以下三种实现方式：
+       ExecAction：在容器内执行指定命令。如果命令退出时返回码为 0 则表明容器健康
+       TCPSocketAction：对指定端口上的容器的 IP 地址进行 TCP 检查。如果能够建立连接，则表明容器健康
+       HTTPGetAction：对指定的端口和路径上的容器的 IP 地址执行 HTTP Get 请求。如果响应的状态码大于等于200 且小于 400则表明容器健康
+ReadnessProbe：就绪性探测
+
+A.设置exec探针：
+ livenessProbe: #健康状态检测
+      exec: #exec表示使用自定义shell命令来检测，此检测表示探测容器中healthy文件是否存在
+        command:
+        - test
+        - -e
+        - /tmp/healthy
+      initialDelaySeconds: 15（初始延迟秒数）
+      timeoutSeconds: 1（超时秒）
+# kubectl describe pod liveness-exec（查看pod事件）
+# kubectl get pod
+
+B.设置tcp探针：
+    livenessProbe:
+      tcpSocket:
+        port: 80
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+
+C.设置http探针：
+    livenessProbe:
+      httpGet:
+        path: /_status/healthz
+        port: 80
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+    对于每种探测方式，需要设置initialDelaySeconds和timeoutSeconds参数，分别表示首次检查等待时间以及超时时间
+
+
+
+kind之Pod：
+一般由控制器去创建pod,其配置文件中内嵌了pod的创建方式.
+pod控制器:ReplicaSet、Deployment、DaemonSet、Job、Cronjob、StatefulSet
+
+    ReplicaSet:代用户创建指定数量的pod副本数量,确保pod副本数量符合预期状态,并且支持滚动式自动扩容和缩容功能.
+ReplicaSet主要由三个组件组成:
+a.用户期望的pod副本数量;
+b.标签选择器,判断哪个pod归自己管理;
+c.pod资源模板,当现存的pod数量不足,会根据pod资源模板进行新建.
+注：帮助用户管理无状态的pod资源,精确反应用户定义的目标数量,但RelicaSet不是直接使用的控制器,而是使用Deployment
+name：template，资源模板中定义的name其实不生效,pod运行起来之后,真正的名字是控制器名+随机字符串
+   编辑replicatset的配置文件,这个文件不是我们手工创建的,而是apiserver维护的,修改副本数：kubectl edit rs myapp
+   
+
+
+    Deployment:工作在ReplicaSet之上,用于管理无状态应用,目前来说最好的控制器.支持滚动更新和回滚功能,还提供声明式配置
+
+升级方式：
+A.修改文件方式：
+例如 # sed -i 's/image: nginx:1.16/image: nginx:1.17/g' nginx-roll.yaml
+     # kubectl apply -f nginx-roll.yaml --record  
+B.kubectl set image方式：
+例如 # kubectl set image deployment -n test02-namespace nginx-roll nginx-roll=nginx:1.17.1
+
+回滚方式：
+1.查看deployment版本：
+例如 # kubectl rollout history deployments -n test02-namespace nginx-roll
+2.查看deployment具体版本信息：
+例如 # kubctl rollout history deployments -n test02-namespace nginx-roll --revision=1
+3.回滚上一个版本：
+例如 # kubectl rollout undo deployment -n test02-namespace nginx-roll 
+4.回滚指定版本：
+例如 # kubectl rollout undo deployment -n test02-namespace nginx-roll --to-revision=1
+5.查看ReplicasSet
+例如 # kubctl get replicasets -n test02-namespace -o wide
+可以看到在升级过程中replicaset保留了修改的历史版本信息
+
+查看滚动更新的历史：
+# kubectl rollout history deployment myapp-deploy
+# kubectl get pods -l app=myapp -w
+# kubectl rollout status deployment myapp-deploy
+# kubectl rollout resume deployment myapp-deploy
+查看副本集的详细信息：
+# kubectl get rs -o wide
+版本回滚：
+# kubectl rollout history deployment myapp-deploy
+# kubectl rollout undo deployment myapp-deploy --to-revision=1
+通常deployment默认保留10个版本的replicatset.
+
+
+
+    DaemonSet:用于确保集群中的每一个节点只运行特定的pod副本,通常用于实现系统级后台任务,比如ELK中负责收集日志filebeat,特性:服务是无状态的,服务必须是守护进程
+进入redis：
+kubectl exec -it redis-664bbc646b-sg6wk -- /bin/sh
+daemon-set也支持滚动更新
+kubectl set image daemonsets filebeat-ds filebeat=ikubernetes/filebeat:5.5.7-alpine
+kubectl explain pods.spec（有一个字段hostNetwork,可以让容器直接共享宿主机的网络）
+注:不同pod之间通信,filebeat向redis发送日志靠的是service
+
+
+    Job:只要完成就立即退出,不需要重启或重建
+    Cronjob:周期性任务控制,不需要持续后台运行
+    StatefulSet:管理有状态应用
+kubectl api-version #查看api资源版本
+
+
+
+Pod文件的创建方式：
+apiVersion: apps/v1  #描述文件遵循apps/v1版本的Kubernetes API
+kind: Deployment                #创建资源类型为Deployment
+metadata:                       #该资源元数据
+  name: nginx-master            #Deployment名称
+spec:                           #Deployment的规格说明
+  replicas: 3                   #指定副本数为3
+  template:                     #定义Pod的模板
+    metadata:                   #定义Pod的元数据
+      labels:                   #定义label（标签）
+        app: nginx              #label的key和value分别为app和nginx
+    spec:                       #Pod的规格说明
+      containers:               
+      - name: nginx             #容器的名称
+        image: nginx:latest     #创建容器所使用的镜像
+扩容，通过修改文件中参数replicas的值并且重新执行kubectl apply命令即可实现pod的扩缩容
+
+
+
+转移failover：
+节点node2关机：#init 0
+      node02状态为NotReady且之前在该节点的pod被迁移至master或者node01
+      当node02恢复后，运行在该节点的Pod会被删除，且迁移至master和node01的Pod不会重新调度回到node02
+注意：转移有个前提，所有pod需绑定到replication controller上，'裸奔的 pod'(没有绑定到任何replication controller)不会被重新调度
+
+
+
+日志查看：
+1.查看最近日志
+# kubectl logs kubernetes-dashboard-7b87f5bdd6-m62r6 -n kube-system --tail=20（最近20行的日志）
+2.查看前一个容器日志
+# kubectl logs kubernetes-dashboard-7b87f5bdd6-m62r6 -n kube-system  --previous（'--previous'：当容器重启时，该参数可以查看前一个容器的日志） 
+3.通过标签查看日志
+# kubectl logs -lapp=web
+
+
+
+k8s之rc（ReplicationController）
+     RC保证在同一时间能够运行指定数量的Pod副本，保证Pod总是可用。如果实际Pod数量比指定的多就结束掉多余的，如果实际数量比指定的少就启动缺少
+     当Pod失败、被删除或被终结时，RC会自动创建新的Pod来保证副本数量，所以即使只有一个Pod，也应该使用RC来进行管理
+apiVersion: v1
+kind: ReplicationController  //ReplicationController类型
+metadata:
+  name: nginx               //pod名字
+spec:
+  replicas: 2               //2个副本
+  selector:                 //标签选择器
+    app: nginx              //通过这个标签找到生成的pod
+  template:                 //定义pod模板，在这里不需要定义pod名字
+    metadata:
+     labels:                //定义标签
+      app: nginx            //key:v这里必须和selector中定义的KV一样
+    spec:
+     containers:            //容器重启策略必须是Always(总是重启）
+      - image: nginx
+        name: nginx
+        ports:  
+        - containerPort: 80
+K8S通过template来生成pod，创建完后模板和pod就没有任何关系了，rc通过 labels来找对应的pod,控制副本
+# kubctl get rc nginx（查询rc）
+# kubectl get pod --selector app=nginx（查询pod容器）
+# kubectl get pod --selector app=nginx --label-columns app（建查）
+删除pod会后会立刻在拉起一个pod
+# kubectl delete rc nginx删除rc后pod也被删除(--cascade=false只删除rc保留创建的pod)
+    ReplicationController（Rc）会根据标签选择器管理符合其标签的所有pod，并维持在replicas设置的数量上
+    当有一个pod发生故障然后又需要保留pod以查询日志信息的时候，可以更改pod的标签来移出ReplicationController的管理范围，这样Rc会重新创建一个pod，故障pod也不会删除，仍然可以根据日志分析故障原因
+注意：修改yaml文件的模板或者标签选择器时，要删除之前创建的pod，不然pod会失去Rc的管理，白白占用内存空间，类似于java中的内存泄漏
+    有的时候需要删除Rc但是不能删除Rc下面管理的pod，比如需要将Rc升级到ReplicaSet（Rs）,可以执行以下命令：
+# kubectl delete re kubia --cascade=false 
+# kubectl delete rs kubia（删除rc）
+
+更加强大的标签选择器：matchExpressions
+spec:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - app
+    每个表达式都必须包含一个key、一 个operator(运算符），并且可能还有一个values的列表（取决于运算符），运算符如下：
+        In : Label的值必须与其中一个指定的values匹配。
+        Notln : Label的值与任何指定的values不匹配。
+        Exists : pod必须包含一个指定名称的标签（值不重要）。使用此运算符时， 不应指定values字段。
+        DoesNotExist : pod不得包含有指定名称的标签。values属性不得指定
+    如果你指定了多个表达式，则所有这些表达式都必须为true才能使选择器与 pod匹配。如果同时指定matchLabels和matchExpressions, 则所有标签都必须匹配，并且所有表达式必须计算为true以使该pod与选择器匹配
+
+在动态扩容管理方面，我们需要引入到另外一个参数“scale”：
+缩容：
+# kubectl scale replicationcontroller nginx-rc --replicas=1
+replicationcontroller "nginx-rc" scaled
+# kubectl get pod -l name
+# kubectl get rc nginx-rc
+扩容：
+# kubectl scale replicationcontroller nginx-rc --replicas=3
+replicationcontroller "nginx-rc" scaled
+
+关于RC特性：
+大部分情况下，我们可以通过定义一个RC实现的Pod的创建和副本数量的控制
+RC中包含一个完整的Pod定义模块（不包含apiversion和kind）
+RC是通过label selector机制来实现对Pod副本的控制的
+通过改变RC里面的Pod副本数量，可以实现Pod的扩缩容功能
+通过改变RC里面的Pod模板中镜像版本，可以实现Pod的滚动升级功能（但是不支持一键回滚，需要用相同的方法去修改镜像地址）
+
+
+
+
+k8s之service：
+Service 介绍:
+    （1）Kubernetes Service 从逻辑上代表了一组 Pod，具体是哪些 Pod 则是由 label 来挑选。
+    （2）Service 有自己 IP，而且这个 IP 是不变的
+   客户端只需要访问 Service 的 IP，Kubernetes 则负责建立和维护 Service 与 Pod 的映射关系。
+   无论后端 Pod 如何变化，对客户端不会有任何影响，因为 Service 没有变    
+    Service主要的功能是映射pod对应的端口到宿主机上（代理），或是做负载均衡，还可以将内部IP发布成外部IP
+三种主要的Service
+    1.ClusterIP集群ip: 仅仅使用一个集群内部的IP地址 - 这是默认值。选择这个值意味着你只想这个服务在集群内部才可以被访问到
+    2.NodePort节点端口: 在集群内部IP的基础上，在集群的每一个节点的端口上开放这个服务。你可以在任意:NodePort地址上访问到这个服务
+    3.LoadBalancer负载平衡器: 在使用一个集群内部IP地址和在NodePort上开放一个服务之外，向云提供商申请一个负载均衡器，会让流量转发到这个在每个节点上以:NodePort的形式开放的服务上
+spec:
+  type: NodePort      //类型（外部访问添加）
+  ports:
+  - nodePort: 8080    //节点端口
+    targetPort: 80    //目标端口
+    protocol: TCP     //协议
+    name: http
+  - nodePort: 443     
+    protocol: TCP
+    name: https
+  selector:           //选择器
+    run: my-nginx  
+port:暴露给服务（service）的端口
+targetPort:容器（pod）的端口
+nodePort:宿主机的端口
+# kubectl get svc
+    K8S创建了一个NodePort,范围是3000-32767，这里就可以通过30664端口访问到web服务，形式是NodeIP:NodePort,如果NodeIP是外网IP则将把流量分发给后端服务器
+
+Service是K8s中重要的概念，你应该至少明白Service的这些内容：
+    1.通过标签选择器，将一组Pod设置为Service，并为Service配置静态的IP和端口
+    2.Service可以从群集内部访问，也可以通过设置为NodePort或LoadBalancer的方式从外部访问
+    3.Pod可以通过环境变量获取Service的IP和Port，进行访问
+    4.可以将对Pod的关联关系，设置到Endpoint资源中，而简化label selector的方式
+    5.通过设置ServiceType为ExternalName，可以访问外部的服务
+    6.通过Ingress可以设置多个Service被外部访问
+    7.使用pod的就绪性探测器可以决定pod是否被作为服务的一部分
+    8.通过无头服务，可以使用DNS获取Pod的IP
+
+内网访问：
+1.创建Pod：
+# vim web-svc.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-svc
+  namespace: test02-namespace
+spec:
+  selector:
+    matchLabels:
+      app: web-svc
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: web-svc
+    spec:
+      containers:
+      - name: web-svc
+        image: httpd:latest
+2.内网访问：
+创建service：
+# vim web-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: test02-namespace
+spec:
+  selector:
+    app: web-svc
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 80
+# kubectl apply -f web-svc.yaml
+修改index.html
+# kubectl get po -o wide -n test02-namespace
+例如 # kubectl exec -it web-svc-58956c55fc-7vnw5 -n test02-namespace bash 
+root@web-svc-58956c55fc-7vnw5:/usr/local/apache2# cat > /usr/local/apache2/htdocs/index.html << EOF
+> web-svc-58956c55fc-7vnw5
+> EOF（进入容器中）
+分别进入pod，将访问的主页修改为pod名
+# curl 10.98.103.41:8080（访问）
+3.外网访问：
+# vim web-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: test02-namespace
+spec:
+  type: NodePort     //外网访问必须
+  selector:
+    app: web-svc
+  ports:
+  - protocol: TCP
+    nodePort: 30002  //可以不指定
+    port: 8080
+    targetPort: 80
+# kubectl apply -f web-svc.yaml
+# curl 172.27.9.131:30002访问）
+# kubectl describe service httpd-svc(查看service与pod对应关系)
+# sudo ipvsadm -ln（查看ipvs）
+
+ipvs和iptables的区别：
+    1.k8s中默认使用的是iptables，但是ipvs要更加强大
+    2.ipvs 为大型集群提供了更好的可扩展性和性能
+    3.ipvs 支持比 iptables 更复杂的复制均衡算法（最小负载、最少连接、加权等等）
+    4.ipvs 支持服务器健康检查和连接重试等功能
+       
+    ipvs (IP Virtual Server) 实现了传输层负载均衡，也就是我们常说的4层LAN交换（基于TCP四层(IP+端口)的负载均衡软件），作为 Linux 内核的一部分。ipvs运行在主机上，在真实服务器集群前充当负载均衡器
+    ipvs可以将基于TCP和UDP的服务请求转发到真实服务器上，并使真实服务器的服务在单个 IP 地址上显示为虚拟服务
+    ipvs是在kubernetes v1.8版本中引进的，小七这里使用的是v1.15版本，之前配置的时候就是使用了ipvs来替换iptables
+    k8s对ipvs的规则可以说是只增不减
+
+使用DNS：
+# kubectl run busybox --rm -ti --image=busybox /bin/sh
+/ # curl http-service.default：7777
+/ # wget http-service.default：7777
+/ # nslookup http-service
+# kubectl run dig --rm -it --image=docker.io/azukiapp/dig /bin/sh
+/ # nslookup http-service 
+/ # wget http-service.default：7777
+/ # wget http-service：7777
+/ # wget http-service
+/ # nslookup www.baidu.com
+# kubctl get services -A
+
+NodePort简介：
+Type 的取值以及行为如下：
+    1.ClusterIP：通过集群的内部 IP 暴露服务，选择该值，服务只能够在集群内部可以访问，这也是默认的 ServiceType。
+    2.NodePort：通过每个 Node 上的 IP 和静态端口（NodePort）暴露服务。NodePort 服务会路由到 ClusterIP 服务，这个 ClusterIP 服务会自动创建。通过请求 <NodeIP>:<NodePort>，可以从集群的外部访问一个 NodePort 服务。
+    3.LoadBalancer：使用云提供商的负载局衡器，可以向外部暴露服务。外部的负载均衡器可以路由到 NodePort 服务和 ClusterIP 服务。
+    4.ExternalName：通过返回 CNAME 和它的值，可以将服务映射到 externalName 字段的内容（例如， foo.bar.example.com）。 没有任何类型代理被创建，这只有 Kubernetes 1.7 或更高版本的 kube-dns 才支持
+
+
+
+
+
+k8s之deployment：
+     Deployment是新一代用于Pod管理的对象，与Replication Controller相比，它提供了更加完善的功能，使用起来更加简单方便
+     一个Deployment拥有多个Replica Set，而一个Replica Set拥有一个或多个Pod
+
+# kubectl describe deployment httpd-ken（查看deployment的详细）
+用户通过 kubectl 创建 Deployment。
+Deployment 创建 ReplicaSet。
+ReplicaSet 创建 Pod
+对象的命名方式是：子对象的名字 = 父对象名字 + 随机字符串或数字
+# kubectl run nginx-deployment –image=nginx:1.7.9 –replicas=2（直接创建）
+
+Deployment 的配置格式：
+① apiVersion 是当前配置格式的版本。
+先执行kubectl api-resources找到所有的资源
+在执行命令 kubectl explain deploy即可获取到版本和类型信息
+② kind 是要创建的资源类型，这里是 Deployment。
+③ metadata 是该资源的元数据，name 是必需的元数据项。
+④ spec 部分是该 Deployment 的规格说明。
+⑤ replicas 指明副本数量，默认为 1。
+⑥ template 定义 Pod 的模板，这是配置文件的重要部分。
+⑦ metadata 定义 Pod 的元数据，至少要定义一个 label。label 的 key 和 value 可以任意指定。
+⑧ spec 描述 Pod 的规格，此部分定义 Pod 中每一个容器的属性，name 和 image 是必需的
+
+Deployment更新：
+       1.rolling-update只有当Pod template（模板）发生变更时，Deployment才会触发rolling-update，此时Deployment会自动完成更新，且会保证更新期间始终有一定数量的Pod为运行状态
+       2.其他变更，如暂停/恢复更新、修改replica数量、修改变更记录数量限制等操作。这些操作不会修改Pod参数，只影响Deployment参数，因此不会触发rolling-update       
+     kubectl delete指令可以用来删除Deployment，需要注意的是通过API删除Deployment时，对应的RS和Pods不会自动删除，需要依次调用删除Deployment的API、删除RS的API和删除Pods的API
+
+
+
+
+
+
+k8s之spec：
+spec:
+  containers:
+  - image: iKubernetes/myapp:v1 #拉取镜像
+    imagePullPolicy: IfNotPresent #表示如果本地有镜像则从本地镜像启动，如果没有则去网上拉取镜像
+    name: myapp #pod中运行的容器名称
+    resources: {} #定义资源限制，比如多少cpu，内存等
+  dnsPolicy: ClusterFirst #dns策略，clusterfirst为k8s默认dns策略
+  priority: 0 #定义优先级
+  restartPolicy: Always #重启策略，定义pod宕机时，则有controller重启pod
+  schedulerName: default-scheduler #由哪个调度器调度
+  securityContext: {}  #安全上下文
+    lifecycle: #定义容器的生命周期字段
+          postStart: #开始之前
+            exec:
+              command: ["/bin/sh", "-c", "echo Hello from the     postStart handler > /usr/share/message"]
+          preStop: #结束之前
+            exec:
+              command: ["/bin/sh","-c","nginx -s quit; while killall -0 nginx; do sleep 1; done"]
+
+
+
+Pod之mysql：
+# vim test.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-env
+spec:
+  containers:
+  - name: mysql-env
+    image: mysql
+    env:
+    - name: "MYSQL_ROOT_PASSWORD"
+      value: "123456"
+
+
+
+
